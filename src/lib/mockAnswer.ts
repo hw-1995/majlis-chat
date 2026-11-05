@@ -11,6 +11,30 @@ export interface MockSource {
   text: string;
 }
 
+/** The subset of a conversation turn the mock needs to read. */
+export interface MockTurn {
+  role: string;
+  content: string;
+}
+
+/** What the mock decides to do with a request. */
+export type MockReply = { kind: 'text'; text: string };
+
+/**
+ * Decide the mock's reply. Shared by the dev-server middleware and the
+ * in-browser provider, so both transports behave identically.
+ */
+export function planMockReply(turns: MockTurn[], sources: MockSource[]): MockReply {
+  const question = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
+  return { kind: 'text', text: composeAnswer(question, sources) };
+}
+
+/** The `/drop` demo affordance: cut the first attempt off halfway. */
+export function shouldDrop(turns: MockTurn[], resumeFrom: string): boolean {
+  const question = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
+  return question.includes('/drop') && resumeFrom.length === 0;
+}
+
 export function isArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);
 }

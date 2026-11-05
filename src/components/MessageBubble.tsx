@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { CitedText } from './CitedText';
+import type { Strings } from '../i18n';
 import type { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -7,6 +8,7 @@ interface MessageBubbleProps {
   sourceCount: number;
   onCite?: (index: number) => void;
   activeIndex?: number | null;
+  strings: Strings;
 }
 
 /**
@@ -18,6 +20,7 @@ export const MessageBubble = memo(function MessageBubble({
   sourceCount,
   onCite,
   activeIndex,
+  strings,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
@@ -35,7 +38,15 @@ export const MessageBubble = memo(function MessageBubble({
           />
         )}
       </div>
-      {message.error ? <p className="bubble__error">{message.error}</p> : null}
+      {message.error ? (
+        <p className="bubble__error">
+          {strings.errors[(message.errorCode ?? 'unknown') as keyof Strings['errors']] ??
+            strings.errors.unknown}
+          <span className="bubble__error-detail" dir="ltr">
+            {message.error}
+          </span>
+        </p>
+      ) : null}
     </article>
   );
 });

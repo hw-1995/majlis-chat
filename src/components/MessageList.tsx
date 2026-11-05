@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingBubble } from './StreamingBubble';
 import type { TextStore } from '../lib/textStore';
+import type { Strings } from '../i18n';
 import type { Message } from '../types';
 
 interface MessageListProps {
@@ -14,6 +15,7 @@ interface MessageListProps {
   emptyHint: string;
   examples: string[];
   onPickExample: (question: string) => void;
+  strings: Strings;
 }
 
 /** Treat the viewer as "following" the stream while within this many pixels. */
@@ -29,6 +31,7 @@ export function MessageList({
   emptyHint,
   examples,
   onPickExample,
+  strings,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -77,6 +80,7 @@ export function MessageList({
           sourceCount={sourceCount}
           onCite={onCite}
           activeIndex={activeIndex}
+          strings={strings}
         />
       ))}
 

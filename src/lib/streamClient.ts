@@ -1,29 +1,37 @@
-import { createSseParser } from './sse';
-import { streamLocal } from './localProvider';
-import type { Message, SourceDoc, StreamEvent } from '../types';
+import { ProviderError, type ChatTurn, type Provider, type ToolCallRef, type ToolSpec } from '../gateway/types';
+import type { SourceDoc } from '../types';
 
 /**
- * Sentinel meaning "no backend — stream the mock in this tab". A static build
- * has no dev server to POST to, so a deployed demo falls back to it rather
- * than shipping a page that fails on first message.
+ * Stream one model response through a provider, retrying a dropped connection.
+ *
+ * What a retry does depends on the provider:
+ *   - providers that can continue (the bundled mock) are sent the text already
+ *     received as `resumeFrom`, and pick up mid-sentence;
+ *   - providers that cannot (the OpenAI Chat Completions format has no
+ *     continuation primitive) start the answer again, and `onReset` tells the
+ *     UI to clear the partial text so the restart does not duplicate it.
+ *
+ * Never retried: a user pressing Stop, and errors that would fail the same way
+ * again (a bad key, an exhausted quota, a CORS refusal).
  */
-export const LOCAL_TRANSPORT = 'local';
 
-const DEFAULT_URL: string =
-  import.meta.env?.VITE_API_URL ??
-  (import.meta.env?.DEV ? '/api/chat' : LOCAL_TRANSPORT);
-
-export interface StreamOptions {
-  messages: Message[];
-  /** Retrieved context for this turn. Sent alongside the conversation so the
-   *  provider can ground its answer and emit [n] citation markers. */
+export interface StreamTurnOptions {
+  provider: Provider;
+  turns: ChatTurn[];
+  tools?: ToolSpec[];
   sources?: SourceDoc[];
   signal: AbortSignal;
   onToken: (token: string) => void;
+  /** The partial answer was discarded because the provider restarts on retry. */
+  onReset?: () => void;
   /** Fired before each retry so the UI can say "reconnecting" instead of stalling. */
   onRetry?: (attempt: number, delayMs: number) => void;
-  url?: string;
   maxRetries?: number;
+}
+
+export interface TurnResult {
+  text: string;
+  toolCalls: ToolCallRef[];
 }
 
 export function isAbort(error: unknown): boolean {
@@ -34,6 +42,12 @@ export function isAbort(error: unknown): boolean {
 export function backoffDelay(attempt: number, base = 400, cap = 8000): number {
   const ceiling = Math.min(cap, base * 2 ** attempt);
   return Math.random() * ceiling;
+}
+
+export function isRetryable(error: unknown): boolean {
+  if (isAbort(error)) return false;
+  if (error instanceof ProviderError) return error.retryable;
+  return true; // a mid-stream drop or an unexpected failure is worth one more try
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -50,100 +64,36 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Run one request to completion, feeding tokens to `onToken`.
- * Throws if the connection drops mid-stream so the caller can decide to retry.
- */
-async function streamOnce(
-  url: string,
-  messages: Message[],
-  sources: SourceDoc[],
-  resumeFrom: string,
-  signal: AbortSignal,
-  onToken: (token: string) => void,
-): Promise<void> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, sources, resumeFrom }),
-    signal,
-  });
+export async function streamTurn(options: StreamTurnOptions): Promise<TurnResult> {
+  const { provider, turns, tools, sources = [], signal, onToken, onReset, onRetry } = options;
+  const maxRetries = options.maxRetries ?? 2;
 
-  if (!response.ok || !response.body) {
-    throw new Error(`Chat request failed: ${response.status} ${response.statusText}`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let streamEnded = false;
-
-  const parser = createSseParser((event) => {
-    let payload: StreamEvent;
-    try {
-      payload = JSON.parse(event.data) as StreamEvent;
-    } catch {
-      return; // Ignore keep-alives and anything that is not our wire format.
-    }
-    if (payload.type === 'token') onToken(payload.value);
-    else if (payload.type === 'done') streamEnded = true;
-    else if (payload.type === 'error') throw new Error(payload.message);
-  });
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    parser.push(decoder.decode(value, { stream: true }));
-  }
-  parser.flush();
-
-  // A stream that stops without `done` was cut off — surface it so we retry
-  // rather than presenting a truncated answer as if it were complete.
-  if (!streamEnded) {
-    throw new Error('Stream ended before completion');
-  }
-}
-
-/**
- * Stream one assistant turn, retrying a dropped connection with backoff.
- *
- * On retry the text received so far is sent back as `resumeFrom`. The bundled
- * mock provider continues from it. Real providers differ: Anthropic supports
- * this directly by prefilling the assistant turn, while others have no
- * continuation primitive and will restart the turn — see DEVELOPMENT_GUIDE.md.
- *
- * A user-initiated abort is never retried.
- */
-export async function streamChat(options: StreamOptions): Promise<string> {
-  const {
-    messages,
-    sources = [],
-    signal,
-    onToken,
-    onRetry,
-    url = DEFAULT_URL,
-    maxRetries = 2,
-  } = options;
-
-  let accumulated = '';
+  let text = '';
+  let toolCalls: ToolCallRef[] = [];
   let attempt = 0;
 
-  const collect = (token: string): void => {
-    accumulated += token;
-    onToken(token);
-  };
-
   for (;;) {
+    toolCalls = [];
     try {
-      if (url === LOCAL_TRANSPORT) {
-        await streamLocal(messages, sources, accumulated, signal, collect);
-      } else {
-        await streamOnce(url, messages, sources, accumulated, signal, collect);
-      }
-      return accumulated;
+      await provider.stream(
+        { turns, tools, sources, resumeFrom: provider.supportsResume ? text : '', signal },
+        (event) => {
+          if (event.type === 'token') {
+            text += event.value;
+            onToken(event.value);
+          } else if (event.type === 'tool_call') {
+            toolCalls.push({ id: event.id, name: event.name, arguments: event.arguments });
+          }
+        },
+      );
+      return { text, toolCalls };
     } catch (error) {
-      if (isAbort(error) || signal.aborted) throw error;
-      if (attempt >= maxRetries) throw error;
+      if (signal.aborted || !isRetryable(error) || attempt >= maxRetries) throw error;
 
+      if (!provider.supportsResume && text.length > 0) {
+        text = '';
+        onReset?.();
+      }
       const delay = backoffDelay(attempt);
       onRetry?.(attempt + 1, delay);
       await sleep(delay, signal);

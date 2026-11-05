@@ -21,6 +21,8 @@ export interface Message {
   steps?: ToolStep[];
   /** Set when the turn ended badly, so the UI can offer a retry. */
   error?: string;
+  /** Machine-readable reason, so the UI can explain the error in the reader's language. */
+  errorCode?: string;
 }
 
 export interface SourceDoc {

@@ -19,7 +19,23 @@ export interface Strings {
   droppedTurns: string;
   cited: string;
   mockNotice: string;
+  liveNotice: string;
   corpusNotice: string;
+  settings: {
+    title: string;
+    provider: string;
+    mock: string;
+    baseUrl: string;
+    model: string;
+    apiKey: string;
+    show: string;
+    hide: string;
+    clearKey: string;
+    keyNote: string;
+    corsNote: string;
+    newChat: string;
+  };
+  errors: Record<'auth' | 'rate_limit' | 'network' | 'bad_request' | 'server' | 'unknown', string>;
 }
 
 const en: Strings = {
@@ -46,6 +62,32 @@ const en: Strings = {
   cited: 'Cited',
   mockNotice: 'Running against the bundled mock provider — no model is being called.',
   corpusNotice: 'Knowledge base: help articles for Qalam Notes, a fictional product.',
+  liveNotice: 'Answers come from {provider}, called directly from your browser with your own key.',
+  settings: {
+    title: 'Model settings',
+    provider: 'Provider',
+    mock: 'Built-in mock (no key needed)',
+    baseUrl: 'Base URL',
+    model: 'Model',
+    apiKey: 'API key',
+    show: 'Show',
+    hide: 'Hide',
+    clearKey: 'Clear key',
+    keyNote:
+      'Your key stays in this browser tab (sessionStorage) and is cleared when the tab closes. It is sent only to the provider above — never to this site.',
+    corsNote:
+      'Some providers refuse requests made directly from a browser. If you see a network error, try another provider or point "Custom" at your own proxy.',
+    newChat: 'New chat',
+  },
+  errors: {
+    auth: 'The provider rejected the API key. Check that it is correct and has credit.',
+    rate_limit: 'The provider says the rate limit or quota has been reached.',
+    network:
+      'Could not reach the provider. It may not allow requests from a browser (CORS), or the network is down.',
+    bad_request: 'The provider rejected the request — the model name may be wrong.',
+    server: 'The provider had a problem answering. Please try again.',
+    unknown: 'Something went wrong.',
+  },
 };
 
 const zh: Strings = {
@@ -67,6 +109,31 @@ const zh: Strings = {
   cited: '已引用',
   mockNotice: '当前连接的是内置模拟服务，没有调用任何模型。',
   corpusNotice: '知识库：Qalam Notes（虚构产品）的帮助中心文章。',
+  liveNotice: '回答来自 {provider}，由你的浏览器用你自己的 Key 直接调用。',
+  settings: {
+    title: '模型设置',
+    provider: '服务商',
+    mock: '内置模拟服务（无需 Key）',
+    baseUrl: '接口地址',
+    model: '模型',
+    apiKey: 'API Key',
+    show: '显示',
+    hide: '隐藏',
+    clearKey: '清除 Key',
+    keyNote:
+      'Key 只保存在当前浏览器标签页（sessionStorage），关闭标签页即清除；只会发送给上面的服务商，不会发送给本网站。',
+    corsNote:
+      '部分服务商不允许浏览器直接调用。如果出现网络错误，可以换一个服务商，或在「自定义」里填写你自己的代理地址。',
+    newChat: '新对话',
+  },
+  errors: {
+    auth: '服务商拒绝了这个 API Key，请检查 Key 是否正确、账户是否有余额。',
+    rate_limit: '服务商提示已达到调用频率或额度上限。',
+    network: '无法连接服务商：可能该服务商不允许浏览器直接调用（CORS），或网络不通。',
+    bad_request: '服务商拒绝了请求，可能是模型名称填写有误。',
+    server: '服务商处理请求时出错，请重试。',
+    unknown: '出错了。',
+  },
 };
 
 const ar: Strings = {
@@ -88,6 +155,31 @@ const ar: Strings = {
   cited: 'مُستشهد به',
   mockNotice: 'يعمل التطبيق مع المزود التجريبي المدمج — لا يتم استدعاء أي نموذج.',
   corpusNotice: 'قاعدة المعرفة: مقالات المساعدة لتطبيق Qalam Notes، وهو منتج خيالي.',
+  liveNotice: 'تأتي الإجابات من {provider}، ويتم الاتصال به مباشرة من متصفحك باستخدام مفتاحك.',
+  settings: {
+    title: 'إعدادات النموذج',
+    provider: 'المزوّد',
+    mock: 'المزوّد التجريبي المدمج (بلا مفتاح)',
+    baseUrl: 'عنوان الواجهة',
+    model: 'النموذج',
+    apiKey: 'مفتاح API',
+    show: 'إظهار',
+    hide: 'إخفاء',
+    clearKey: 'مسح المفتاح',
+    keyNote:
+      'يبقى مفتاحك في علامة التبويب هذه فقط (sessionStorage) ويُمسح عند إغلاقها، ولا يُرسل إلا إلى المزوّد أعلاه وليس إلى هذا الموقع.',
+    corsNote:
+      'بعض المزوّدين يرفضون الطلبات المرسلة مباشرة من المتصفح. إذا ظهر خطأ في الشبكة فجرّب مزوّداً آخر أو استخدم «مخصص» مع وكيلك الخاص.',
+    newChat: 'محادثة جديدة',
+  },
+  errors: {
+    auth: 'رفض المزوّد مفتاح API. تأكد من صحته ومن وجود رصيد.',
+    rate_limit: 'يفيد المزوّد بأنه تم بلوغ حد الطلبات أو الحصة.',
+    network: 'تعذّر الوصول إلى المزوّد؛ ربما لا يسمح بالطلبات من المتصفح (CORS) أو أن الشبكة منقطعة.',
+    bad_request: 'رفض المزوّد الطلب، وقد يكون اسم النموذج غير صحيح.',
+    server: 'واجه المزوّد مشكلة في الإجابة. حاول مرة أخرى.',
+    unknown: 'حدث خطأ ما.',
+  },
 };
 
 export const STRINGS: Record<Lang, Strings> = { en, zh, ar };

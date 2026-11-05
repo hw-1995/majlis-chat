@@ -1,9 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
-  composeAnswer,
+  planMockReply,
+  shouldDrop,
   toTokens,
   TOKEN_DELAY_MS,
   type MockSource,
+  type MockTurn,
 } from '../src/lib/mockAnswer';
 
 /**
@@ -20,7 +22,7 @@ import {
  */
 
 interface ChatRequestBody {
-  messages?: { role: string; content: string }[];
+  turns?: MockTurn[];
   resumeFrom?: string;
   sources?: MockSource[];
 }
@@ -53,17 +55,17 @@ export async function mockSseMiddleware(
     return;
   }
 
-  const messages = body.messages ?? [];
+  const turns = body.turns ?? [];
   const sources = body.sources ?? [];
   const resumeFrom = body.resumeFrom ?? '';
-  const question = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
 
-  const full = composeAnswer(question, sources);
+  const reply = planMockReply(turns, sources);
+  const full = reply.text;
   const remaining = full.startsWith(resumeFrom) ? full.slice(resumeFrom.length) : full;
   const tokens = toTokens(remaining);
 
-  const shouldDrop = question.includes('/drop') && resumeFrom.length === 0;
-  const cutoff = shouldDrop ? Math.floor(tokens.length / 2) : tokens.length;
+  const drop = shouldDrop(turns, resumeFrom);
+  const cutoff = drop ? Math.floor(tokens.length / 2) : tokens.length;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -82,7 +84,7 @@ export async function mockSseMiddleware(
     await new Promise((resolve) => setTimeout(resolve, TOKEN_DELAY_MS));
   }
 
-  if (shouldDrop) {
+  if (drop) {
     // Destroy without sending `done`: exactly what a dropped connection looks like.
     res.destroy();
     return;
