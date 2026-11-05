@@ -42,6 +42,15 @@ export function SourcePanel({ sources, strings, activeIndex }: SourcePanelProps)
                 <h3 className="source__title" dir="auto" lang={source.lang}>
                   {source.title}
                 </h3>
+                {source.match ? (
+                  <p className="source__match">
+                    {source.match.map((kind) => (
+                      <span key={kind} className={`tag tag--${kind}`}>
+                        {strings.semantic[kind]}
+                      </span>
+                    ))}
+                  </p>
+                ) : null}
                 <p className="source__text" dir="auto" lang={source.lang}>
                   {source.text}
                 </p>

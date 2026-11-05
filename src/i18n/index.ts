@@ -43,6 +43,15 @@ export interface Strings {
     /** Human names for each tool, shown on the step card. */
     names: Record<string, string>;
   };
+  semantic: {
+    toggle: string;
+    hint: string;
+    loading: string;
+    ready: string;
+    failed: string;
+    keyword: string;
+    semantic: string;
+  };
   errors: Record<'auth' | 'rate_limit' | 'network' | 'bad_request' | 'server' | 'unknown', string>;
 }
 
@@ -94,6 +103,15 @@ const en: Strings = {
     running: 'running…',
     failed: 'failed',
     names: { estimate_cost: 'Price calculator', calculate: 'Calculator', get_current_time: 'Clock' },
+  },
+  semantic: {
+    toggle: 'Semantic search (hybrid)',
+    hint: 'Adds an embedding model that runs in your browser, so questions match by meaning and across languages, not just shared words. One-off download of about 120 MB.',
+    loading: 'Downloading model… {percent}%',
+    ready: 'Semantic search is on: keyword and meaning results are fused.',
+    failed: 'Could not load the model, so keyword search is used instead.',
+    keyword: 'keyword',
+    semantic: 'meaning',
   },
   errors: {
     auth: 'The provider rejected the API key. Check that it is correct and has credit.',
@@ -149,6 +167,15 @@ const zh: Strings = {
     failed: '失败',
     names: { estimate_cost: '价格计算器', calculate: '计算器', get_current_time: '时钟' },
   },
+  semantic: {
+    toggle: '语义检索（混合检索）',
+    hint: '在浏览器里加载一个向量模型，按意思而不只是按字面匹配问题，还能跨语言匹配。首次需下载约 120 MB。',
+    loading: '正在下载模型… {percent}%',
+    ready: '语义检索已开启：关键词结果与语义结果融合排序。',
+    failed: '模型加载失败，已退回关键词检索。',
+    keyword: '关键词',
+    semantic: '语义',
+  },
   errors: {
     auth: '服务商拒绝了这个 API Key，请检查 Key 是否正确、账户是否有余额。',
     rate_limit: '服务商提示已达到调用频率或额度上限。',
@@ -201,6 +228,15 @@ const ar: Strings = {
     running: 'قيد التشغيل…',
     failed: 'فشل',
     names: { estimate_cost: 'حاسبة الأسعار', calculate: 'الآلة الحاسبة', get_current_time: 'الساعة' },
+  },
+  semantic: {
+    toggle: 'البحث الدلالي (هجين)',
+    hint: 'يضيف نموذج تضمين يعمل داخل متصفحك، فتتطابق الأسئلة حسب المعنى وعبر اللغات، لا حسب الكلمات المشتركة فقط. تنزيل لمرة واحدة بحجم 120 ميغابايت تقريباً.',
+    loading: 'جارٍ تنزيل النموذج… {percent}٪',
+    ready: 'البحث الدلالي مفعّل: يتم دمج نتائج الكلمات المفتاحية ونتائج المعنى.',
+    failed: 'تعذّر تحميل النموذج، لذا يُستخدم البحث بالكلمات المفتاحية.',
+    keyword: 'كلمات',
+    semantic: 'معنى',
   },
   errors: {
     auth: 'رفض المزوّد مفتاح API. تأكد من صحته ومن وجود رصيد.',

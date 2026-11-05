@@ -548,3 +548,36 @@ body {
 .bubble--steps {
   padding-bottom: 2px;
 }
+
+/* ---------- hybrid retrieval ---------- */
+
+.toggle__status {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.toggle__status--error {
+  color: #c0392b;
+}
+
+.source__match {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.tag--semantic {
+  border-color: var(--accent);
+  color: var(--accent);
+}

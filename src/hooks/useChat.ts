@@ -7,6 +7,8 @@ import { isAbort } from '../lib/streamClient';
 import { runAgent } from '../agent/runAgent';
 import { TOOL_SPECS } from '../agent/tools';
 import { trimToBudget } from '../lib/tokens';
+import { hybridSearch } from '../retrieval/hybrid';
+import type { VectorIndex } from '../retrieval/vectorIndex';
 import { buildProvider, type ModelSettings } from '../gateway/settings';
 import { ProviderError, type ChatTurn } from '../gateway/types';
 import type { ChatStatus, Message, SourceDoc, ToolStep } from '../types';
@@ -59,7 +61,24 @@ export function errorCode(error: unknown): string {
   return error instanceof ProviderError ? error.code : 'unknown';
 }
 
-export function useChat(settings: ModelSettings) {
+/**
+ * Keyword search always; keyword + semantic when the embedding model is ready.
+ * If semantic search fails mid-question (say, out of memory) the question is
+ * still answered from keyword search alone.
+ */
+async function retrieve(question: string, index: Bm25Index, vectors: VectorIndex | null): Promise<SourceDoc[]> {
+  if (vectors) {
+    try {
+      const hits = await hybridSearch(question, index, vectors, TOP_K);
+      return hits.map((hit) => ({ ...hit.doc, match: hit.match }));
+    } catch {
+      // fall through to keyword search
+    }
+  }
+  return index.search(question, TOP_K).map((entry) => entry.doc);
+}
+
+export function useChat(settings: ModelSettings, vectors: VectorIndex | null = null) {
   const index = useMemo(() => new Bm25Index(CORPUS), []);
   const streamStore = useMemo(() => createTextStore(), []);
 
@@ -74,6 +93,8 @@ export function useChat(settings: ModelSettings) {
   const lastQuestionRef = useRef<string>('');
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const vectorsRef = useRef(vectors);
+  vectorsRef.current = vectors;
 
   const run = useCallback(
     async (question: string, history: Message[]) => {
@@ -88,7 +109,12 @@ export function useChat(settings: ModelSettings) {
       setLiveSteps([]);
       streamStore.set('');
 
-      const retrieved = index.search(question, TOP_K).map((entry) => entry.doc);
+      const retrieved = await retrieve(question, index, vectorsRef.current);
+      if (controller.signal.aborted) {
+        setStatus('idle');
+        abortRef.current = null;
+        return;
+      }
       setSources(retrieved);
 
       const system: Message = {

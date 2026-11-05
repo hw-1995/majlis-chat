@@ -32,6 +32,8 @@ export interface SourceDoc {
   lang: 'en' | 'zh' | 'ar';
   /** Translations of the same article share a topic. */
   topic?: string;
+  /** Which retriever found it, when hybrid search is on. */
+  match?: ('keyword' | 'semantic')[];
 }
 
 /** A retrieved passage plus its score, ordered most relevant first. */

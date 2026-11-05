@@ -4,6 +4,7 @@ import { MessageList } from './components/MessageList';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SourcePanel } from './components/SourcePanel';
 import { useChat } from './hooks/useChat';
+import { useSemantic } from './hooks/useSemantic';
 import {
   clearStoredSettings,
   describeProvider,
@@ -27,6 +28,7 @@ export default function App() {
   const [settings, setSettings] = useState<ModelSettings>(loadSettings);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const strings = STRINGS[lang];
+  const semantic = useSemantic(settings.semantic);
   const dir = DIR[lang];
 
   const {
@@ -41,7 +43,7 @@ export default function App() {
     stop,
     retry,
     clear,
-  } = useChat(settings);
+  } = useChat(settings, semantic.status === 'ready' ? semantic.index : null);
 
   const updateSettings = useCallback((next: ModelSettings) => {
     setSettings(next);
@@ -119,6 +121,35 @@ export default function App() {
           <span>
             {strings.tools.toggle}
             <span className="toggle__hint">{strings.tools.hint}</span>
+          </span>
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={settings.semantic}
+            onChange={(event) => updateSettings({ ...settings, semantic: event.target.checked })}
+          />
+          <span>
+            {strings.semantic.toggle}
+            <span className="toggle__hint">{strings.semantic.hint}</span>
+            {semantic.status === 'loading' ? (
+              <span className="toggle__status" role="status">
+                {strings.semantic.loading.replace('{percent}', String(semantic.percent))}
+              </span>
+            ) : null}
+            {semantic.status === 'ready' ? (
+              <span className="toggle__status" role="status">
+                {strings.semantic.ready}
+              </span>
+            ) : null}
+            {semantic.status === 'failed' ? (
+              <span className="toggle__status toggle__status--error" role="status">
+                {strings.semantic.failed}
+                <span className="bubble__error-detail" dir="ltr">
+                  {semantic.message}
+                </span>
+              </span>
+            ) : null}
           </span>
         </label>
       </SettingsPanel>
