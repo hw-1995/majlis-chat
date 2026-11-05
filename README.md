@@ -1,163 +1,223 @@
 # Majlis
 
-A streaming LLM chat interface in React + TypeScript, where every claim in the
-answer is traceable back to the passage it came from — and the whole thing works
-in Arabic, right-to-left, not as an afterthought.
+[中文说明](README.zh-CN.md) · **Live demo:** https://hw-1995.github.io/majlis-chat/
 
-Runs with **no API key**. A mock streaming provider is bundled — as dev-server
-middleware locally, and as an in-browser fallback in a static build — so both
-`npm run dev` and the deployed page work with nothing configured.
+A help-centre assistant built in React and TypeScript. It shows the pieces of an
+LLM product that sit around the model:
+
+- answers stream in, and every claim is cited back to the passage it came from;
+- the visitor can plug in **their own** model API key (DeepSeek, OpenAI, Qwen,
+  Kimi, OpenRouter or any OpenAI-compatible endpoint);
+- the model can **call tools** to get exact numbers instead of guessing them;
+- retrieval is **hybrid**: keyword search plus semantic search, run in the browser;
+- everything works in English, Chinese and Arabic, including right-to-left layout.
+
+It is a static site. There is no server to run and no key of ours to protect.
+With no key entered, a bundled mock answers, so every feature can still be seen.
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm test         # unit tests for the SSE parser, BM25, budgeting, citations
+npm test         # 111 unit tests
+npm run build    # static site in dist/
 ```
 
 ---
 
-## What this demonstrates
+## What it demonstrates
 
 | Problem | How it is solved here |
 |---|---|
 | Streaming a POST response | Hand-written SSE parser over `fetch` + `ReadableStream` |
-| Interrupting a turn | `AbortController`, with the partial answer kept rather than discarded |
-| A dropped connection | Exponential backoff with jitter, resuming from the text already received |
-| An unbounded context window | Token budgeting that pins system messages and trims oldest-first |
-| "Where did that come from?" | BM25 retrieval + inline `[n]` markers wired to the source passage |
-| Arabic / RTL | Logical CSS properties, per-passage `dir="auto"`, Arabic-aware tokenisation |
+| One app, many model vendors | A provider gateway: each vendor's stream is converted into one internal event format |
+| Not paying for visitors' usage | Bring-your-own-key. The key lives in `sessionStorage` and is sent only to the vendor |
+| Wrong arithmetic from a model | Tool calling: a bounded agent loop runs a price calculator, a calculator and a clock |
+| Paraphrased questions missing documents | Hybrid retrieval: BM25 and in-browser embeddings, fused with Reciprocal Rank Fusion |
+| Off-topic questions | Score floors on both retrievers. With no source, the model is told to say so |
+| A dropped connection | Full-jitter backoff. The mock resumes mid-answer; real vendors restart cleanly |
+| An unbounded context window | Token budgeting that pins the system prompt and trims the oldest turns |
+| Vendors that block browsers (CORS) | An optional key-less relay (Cloudflare Worker) in `proxy/` |
+| Three languages and RTL | Trilingual knowledge base, language-aware tokenising, logical CSS properties |
 | Re-render cost per token | Streaming text held in an external store, not React state |
 
 ---
 
-## How it works
+## How a question is answered
 
 ```
 question
-   │
-   ▼
-BM25 index (in-browser, over src/data/corpus.ts)
-   │  top 3 passages
-   ▼
-system prompt: "answer only from these sources, cite with [n]"
-   │
-   ▼
-trimToBudget()  ── pins system, drops oldest turns
-   │
-   ▼
-POST /api/chat ──► SSE: {"type":"token","value":"…"} × N, then {"type":"done"}
-   │
-   ▼
-createSseParser() ──► textStore.append() ──► only StreamingBubble re-renders
-   │
-   ▼
-on completion: parse [n] markers → citation controls → highlight source panel
+  │
+  ├─► BM25 keyword search ──────────┐
+  │                                 ├─► RRF fusion ─► one article per topic ─► top 3 sources
+  └─► embedding search (optional) ──┘     (score floors keep off-topic questions source-less)
+  │
+  ▼
+system prompt: "answer only from these sources, cite with [n], say so if they don't cover it"
+  │
+  ▼
+trimToBudget() ── keeps the system prompt, drops the oldest turns
+  │
+  ▼
+agent loop (max 4 rounds)
+  │   provider.stream() ──► tokens ──► only StreamingBubble re-renders
+  │   if the model asks for a tool: run it in the page, append the result, ask again
+  │   on the last round, no tools are offered, so the model must answer
+  ▼
+answer with [n] citations + the tool steps it used, shown in the transcript
 ```
 
-### Retrieval is BM25, not embeddings
+### Provider gateway (`src/gateway/`)
 
-Deliberate. BM25 needs no API key, no vector store and no build step, so the
-repo demonstrates real retrieval the moment it is cloned. The trade-off is
-honest: BM25 matches words, not meaning, so a question phrased in different
-vocabulary than the source will miss it. Production systems use hybrid search —
-BM25 for exact terms and rare tokens, vectors for paraphrase — and fuse the two
-rankings. `DEVELOPMENT_GUIDE.md` covers where that seam goes.
+Every model is reached through one interface:
 
-Arabic gets specific handling in `normalize()`: diacritics are stripped and the
-alef, alef-maqsura and ta-marbuta variants are folded, because writers use them
-interchangeably and naive tokenisation silently fails to match otherwise.
+```ts
+interface Provider {
+  id: string;
+  supportsResume: boolean;
+  stream(request, onEvent: (e: StreamEvent) => void): Promise<void>;
+}
+```
 
-### Why not `EventSource`
+- `openaiCompatible.ts` speaks the OpenAI Chat Completions format, which
+  DeepSeek, Qwen (DashScope), Kimi, OpenRouter and many others share. It
+  reassembles tool-call arguments that arrive in fragments, and it maps HTTP
+  errors to codes such as `auth`, `rate_limit`, `network` and `server`. The UI
+  then explains the problem in the reader's language, and only retryable errors
+  are retried.
+- `mockProvider.ts` is the keyless demo. It runs over HTTP in development
+  (`server/mockSse.ts`) and in the tab on the static build.
 
-`EventSource` only issues GET requests. A chat turn has to POST the
-conversation, so the SSE framing is parsed by hand from a `ReadableStream`
-(`src/lib/sse.ts`). Chunk boundaries do not respect event boundaries — a single
-event routinely arrives split across reads — which is the main thing the parser
-tests cover.
+Adding a vendor with a different format (Anthropic's Messages API, say) means
+writing one more adapter. Nothing above the gateway changes.
 
-### Why the streaming text is not in React state
+### Bring your own key
 
-At roughly 30 tokens per second, holding the in-flight text in state re-renders
-the entire transcript on every token, and that cost grows with the length of the
-conversation: the longer you chat, the worse the typing feels. Instead the text
-lives in a small external store (`src/lib/textStore.ts`) consumed through
-`useSyncExternalStore`, so only `StreamingBubble` re-renders. Completed messages
-are memoised and never re-render at all.
+The demo has no key of its own, so nobody can spend the owner's quota. A
+visitor who wants a real model opens **Model settings** and pastes their key.
+That key:
 
-Offscreen messages are skipped with CSS `content-visibility: auto` rather than a
-JS virtualisation library — chat bubbles have unpredictable heights, which is
-precisely the case JS windowing handles worst.
+- is kept in `sessionStorage`, so it is gone when the tab closes;
+- is sent only to the vendor's own URL, never to this site;
+- is never put in a URL or logged.
 
-### RTL
+The page loads no third-party scripts at start-up. The only exception is the
+opt-in semantic model, loaded from a CDN when the visitor switches it on.
 
-`dir` is set on the document element so portalled content inherits it. All
-inline offsets use logical properties (`margin-inline-start`, `border-inline-start`,
-`text-align: start`), so switching direction is a one-line change rather than a
-parallel stylesheet — there is not a single `margin-left` in `global.css`.
+### Tool calling (`src/agent/`)
 
-Individual passages carry their own `dir="auto"`, so an Arabic source renders
-right-to-left inside an English interface and vice versa. During streaming the
-first strong directional character may arrive several tokens in, so a paragraph
-can flip direction once the language becomes clear; that is correct BiDi
-behaviour, not a glitch.
+The model cannot run code. It replies with a structured request, such as
+`estimate_cost({"plan":"team","seats":5,"months":12,"billing":"yearly"})`. The
+page runs that tool and sends the JSON result back, and the model writes the
+answer from it. The tools:
+
+| Tool | Why |
+|---|---|
+| `estimate_cost` | Prices come from the same table as the help article, so "$600" is computed, not predicted |
+| `calculate` | A recursive-descent parser for arithmetic only. It never uses `eval`: the expression comes from a model, which comes from user input |
+| `get_current_time` | Models do not know today's date |
+
+All the tools are read-only. A tool that changed something, such as issuing a
+refund, would need the user's confirmation first. The loop is capped at four
+rounds, and tools are withheld on the last one, so a confused model cannot loop
+and run up a bill. A failed tool returns `{"error": …}` rather than throwing, so
+the model can see the error and recover.
+
+### Hybrid retrieval (`src/lib/bm25.ts`, `src/retrieval/`)
+
+- **BM25** handles exact terms. Tokenising is language-aware: Chinese is split
+  into character bigrams, and Arabic is normalised (diacritics removed, letter
+  variants folded, common prefixes and suffixes stripped). A score floor means
+  "Who won the World Cup?" retrieves nothing, so the assistant declines instead
+  of improvising.
+- **Semantic search** is opt-in. It loads `multilingual-e5-small` with
+  Transformers.js (WebAssembly), entirely in the browser, as a one-off download
+  of about 120 MB. It matches by meaning ("费用" finds the pricing article) and
+  across languages.
+- **Reciprocal Rank Fusion** combines the two rankings by position, because a
+  BM25 score and a cosine similarity are not on comparable scales.
+- **One article per topic:** semantic search may return the English, Chinese
+  and Arabic versions of one article. Only the version in the reader's language
+  is kept.
+- **Fallbacks.** The library is loaded from jsDelivr, or esm.sh if that fails.
+  The model is loaded from Hugging Face, or hf-mirror.com if that fails. If
+  neither works, search falls back to BM25 and the settings panel says why.
+
+### Knowledge base
+
+`src/data/corpus.ts` holds 12 help articles for **Qalam Notes**, a fictional
+note-taking app, each written in English, Chinese and Arabic. The product is
+invented on purpose: a model cannot answer from its training data, so a correct
+answer shows that retrieval worked.
 
 ---
 
 ## Try these
 
-- `what is offside?` — retrieval in English
-- `ما هي ركلة الجزاء؟` — retrieval in Arabic; switch the UI to العربية
-- `what is offside? /drop` — the mock cuts the connection halfway, so you can
-  watch the client back off, reconnect and **resume from where it stopped**
-  rather than restarting the answer
+| Question | What you see |
+|---|---|
+| `How much does Pro cost?` | Retrieval and a cited answer |
+| `What would Team cost for 5 people for a year?` / `团队版 5 个人用一年多少钱` | A tool call (price calculator), then an answer from its result |
+| `帮我算一下 12 * (3 + 4)` | The calculator tool |
+| `Who won the 2022 World Cup?` / `怎样才能快速致富` | No sources, so the assistant says the help centre does not cover it |
+| `كيف أعيد تعيين كلمة المرور؟` | Arabic, right to left |
+| Any question + ` /drop` | The mock cuts the stream halfway. The client backs off, reconnects and resumes |
+| Model settings → Semantic search | Download progress, then sources tagged *keyword* / *meaning* |
+
+To use a real model, open **Model settings**, pick a provider and paste your
+key. DeepSeek and Qwen both have low-cost keys.
 
 ---
 
-## Deploying
+## When a provider blocks browser calls
 
-`npm run build` produces a static site. With no `VITE_API_URL` set, the client
-falls back to `streamLocal` and streams the mock answer in the browser, so a
-GitHub Pages build is a working demo rather than a page that fails on the first
-message. The identical client path runs either way — same token callbacks, same
-abort handling, same `/drop` behaviour.
+Some vendors do not send CORS headers, so a browser cannot call them directly.
+The app reports this as a network error. `proxy/worker.ts` is a small
+Cloudflare Worker that relays requests:
 
-A Pages workflow is included at `.github/workflows/deploy.yml`; it runs the
-tests before publishing. `vite.config.ts` sets `base` to `/majlis-chat/` for a
-project site — override with `BASE_PATH=/` for a root domain.
-
-## Pointing it at a real model
-
-`server/mockSse.ts` is the only file that speaks to a provider. Replace it with
-an adapter that emits the same wire format:
-
-```
-data: {"type":"token","value":"…"}
-data: {"type":"done"}
-data: {"type":"error","message":"…"}
+```bash
+cd proxy && npx wrangler deploy
+# then in the app: provider "Custom", base URL https://<your-worker>/deepseek
 ```
 
-Then set `VITE_API_URL` (see `.env.example`). Nothing in `src/` changes.
+The relay **holds no key**: it passes the visitor's `Authorization` header
+through. It is also restricted in four ways:
 
-One caveat on resume-after-drop: the client sends the text it already has as
-`resumeFrom`. Anthropic supports continuing from it directly by prefilling the
-assistant turn; providers without a continuation primitive will restart the
-turn, and the client will still render a correct answer — just not a seamless one.
+- vendor allowlist;
+- chat completions path only;
+- allowed origins only;
+- request body size capped.
+
+It pipes the SSE stream back unchanged, and it cancels the upstream request
+when the visitor presses Stop. In a real product this is also where rate
+limiting, a shared company key and audit logs would go.
 
 ---
 
 ## Layout
 
 ```
-src/lib/         sse.ts · bm25.ts · tokens.ts · citations.ts · streamClient.ts · textStore.ts
-src/hooks/       useChat.ts          orchestration: retrieve → budget → stream → cite
-src/components/  transcript, streaming bubble, composer, source panel
-src/i18n/        English and Arabic strings, direction map
-src/data/        the bilingual demo corpus
-server/          mock streaming provider (dev-server middleware)
+src/gateway/     Provider interface · OpenAI-compatible adapter · mock · settings (BYOK)
+src/agent/       runAgent (tool loop) · tools · safe calculator
+src/retrieval/   embedder (Transformers.js) · vector index · RRF hybrid search
+src/lib/         sse · bm25 · tokens · citations · streamClient (retry/backoff) · textStore
+src/hooks/       useChat (retrieve → budget → agent → cite) · useSemantic (model loading)
+src/components/  transcript, streaming bubble, tool steps, settings, source panel
+src/i18n/        English, Chinese and Arabic strings, direction map
+src/data/        trilingual knowledge base
+server/          mock SSE endpoint for `npm run dev`
+proxy/           optional CORS relay (Cloudflare Worker)
 ```
 
-The four pure modules in `src/lib` carry the unit tests; they are pure functions
-precisely so they can be tested without a browser.
+## Limitations
+
+- The knowledge base is 36 short passages, so there is no chunking and no
+  vector database. A linear scan is fine at this size. `DEVELOPMENT_GUIDE.md`
+  covers what changes at scale.
+- Resume after a drop is seamless only with the mock. OpenAI-compatible
+  vendors have no way to continue a partial answer, so the turn restarts.
+- The semantic score floors were set for multilingual-e5-small, and they are a
+  starting point. In a real product they would be tuned against logged
+  questions.
 
 ## Licence
 

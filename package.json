@@ -4,7 +4,7 @@
   "private": false,
   "type": "module",
   "license": "MIT",
-  "description": "React + TypeScript streaming LLM chat with RAG citations and full RTL/Arabic support",
+  "description": "Streaming LLM help-centre chat: bring-your-own-key model gateway, tool calling, hybrid (BM25 + embedding) retrieval with citations, trilingual with RTL",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
