@@ -23,6 +23,7 @@ import {
 
 interface ChatRequestBody {
   turns?: MockTurn[];
+  tools?: string[];
   resumeFrom?: string;
   sources?: MockSource[];
 }
@@ -59,19 +60,28 @@ export async function mockSseMiddleware(
   const sources = body.sources ?? [];
   const resumeFrom = body.resumeFrom ?? '';
 
-  const reply = planMockReply(turns, sources);
-  const full = reply.text;
-  const remaining = full.startsWith(resumeFrom) ? full.slice(resumeFrom.length) : full;
-  const tokens = toTokens(remaining);
-
-  const drop = shouldDrop(turns, resumeFrom);
-  const cutoff = drop ? Math.floor(tokens.length / 2) : tokens.length;
+  const reply = planMockReply(turns, sources, (body.tools?.length ?? 0) > 0);
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
   });
+
+  if (reply.kind === 'tool_call') {
+    const call = { type: 'tool_call', id: `mock_${Date.now()}`, name: reply.name, arguments: reply.arguments };
+    res.write(`data: ${JSON.stringify(call)}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+    res.end();
+    return;
+  }
+
+  const full = reply.text;
+  const remaining = full.startsWith(resumeFrom) ? full.slice(resumeFrom.length) : full;
+  const tokens = toTokens(remaining);
+
+  const drop = shouldDrop(turns, resumeFrom);
+  const cutoff = drop ? Math.floor(tokens.length / 2) : tokens.length;
 
   let closed = false;
   req.on('close', () => {

@@ -35,6 +35,14 @@ export interface Strings {
     corsNote: string;
     newChat: string;
   };
+  tools: {
+    toggle: string;
+    hint: string;
+    running: string;
+    failed: string;
+    /** Human names for each tool, shown on the step card. */
+    names: Record<string, string>;
+  };
   errors: Record<'auth' | 'rate_limit' | 'network' | 'bad_request' | 'server' | 'unknown', string>;
 }
 
@@ -57,6 +65,7 @@ const en: Strings = {
     'How do I reset my password?',
     'Can I get a refund after renewing?',
     'Who won the 2022 World Cup?',
+    'What would Team cost for 5 people for a year?',
   ],
   droppedTurns: 'older turns trimmed to fit the context budget',
   cited: 'Cited',
@@ -78,6 +87,13 @@ const en: Strings = {
     corsNote:
       'Some providers refuse requests made directly from a browser. If you see a network error, try another provider or point "Custom" at your own proxy.',
     newChat: 'New chat',
+  },
+  tools: {
+    toggle: 'Allow tool calls',
+    hint: 'The model may ask the page to run a price calculator, a calculator or a clock, then answer from the result.',
+    running: 'running…',
+    failed: 'failed',
+    names: { estimate_cost: 'Price calculator', calculate: 'Calculator', get_current_time: 'Clock' },
   },
   errors: {
     auth: 'The provider rejected the API key. Check that it is correct and has credit.',
@@ -104,7 +120,7 @@ const zh: Strings = {
   reconnecting: '连接中断，正在恢复…',
   emptyState: '提一个问题开始吧。',
   emptyHint: '可以试试下面的问题；在任意问题后面加 /drop，可以看到断线续接。',
-  examples: ['专业版每月多少钱', '怎么重置密码', '注销账号以后还能恢复吗', '怎样才能快速致富'],
+  examples: ['专业版每月多少钱', '怎么重置密码', '注销账号以后还能恢复吗', '怎样才能快速致富', '团队版 5 个人用一年多少钱'],
   droppedTurns: '条较早的对话因上下文预算被裁掉',
   cited: '已引用',
   mockNotice: '当前连接的是内置模拟服务，没有调用任何模型。',
@@ -125,6 +141,13 @@ const zh: Strings = {
     corsNote:
       '部分服务商不允许浏览器直接调用。如果出现网络错误，可以换一个服务商，或在「自定义」里填写你自己的代理地址。',
     newChat: '新对话',
+  },
+  tools: {
+    toggle: '允许工具调用',
+    hint: '模型可以让页面运行价格计算器、计算器或时钟，再根据结果作答。',
+    running: '运行中…',
+    failed: '失败',
+    names: { estimate_cost: '价格计算器', calculate: '计算器', get_current_time: '时钟' },
   },
   errors: {
     auth: '服务商拒绝了这个 API Key，请检查 Key 是否正确、账户是否有余额。',
@@ -150,7 +173,7 @@ const ar: Strings = {
   reconnecting: 'انقطع الاتصال — جارٍ الاستئناف…',
   emptyState: 'اطرح سؤالاً للبدء.',
   emptyHint: 'جرّب أحد هذه الأسئلة — أو أضف ‎/drop‎ إلى أي سؤال لرؤية مسار إعادة المحاولة.',
-  examples: ['كيف أعيد تعيين كلمة المرور؟', 'تصدير الملاحظات', 'هل يمكن استرداد المال؟', 'ما هذا'],
+  examples: ['كيف أعيد تعيين كلمة المرور؟', 'تصدير الملاحظات', 'هل يمكن استرداد المال؟', 'ما هذا', 'كم تكلفة خطة Team لـ 5 أعضاء لمدة سنة؟'],
   droppedTurns: 'تم اختصار الرسائل الأقدم لتناسب حدود السياق',
   cited: 'مُستشهد به',
   mockNotice: 'يعمل التطبيق مع المزود التجريبي المدمج — لا يتم استدعاء أي نموذج.',
@@ -171,6 +194,13 @@ const ar: Strings = {
     corsNote:
       'بعض المزوّدين يرفضون الطلبات المرسلة مباشرة من المتصفح. إذا ظهر خطأ في الشبكة فجرّب مزوّداً آخر أو استخدم «مخصص» مع وكيلك الخاص.',
     newChat: 'محادثة جديدة',
+  },
+  tools: {
+    toggle: 'السماح باستدعاء الأدوات',
+    hint: 'يمكن للنموذج أن يطلب من الصفحة تشغيل حاسبة الأسعار أو الآلة الحاسبة أو الساعة، ثم يجيب بناءً على النتيجة.',
+    running: 'قيد التشغيل…',
+    failed: 'فشل',
+    names: { estimate_cost: 'حاسبة الأسعار', calculate: 'الآلة الحاسبة', get_current_time: 'الساعة' },
   },
   errors: {
     auth: 'رفض المزوّد مفتاح API. تأكد من صحته ومن وجود رصيد.',

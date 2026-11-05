@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { CitedText } from './CitedText';
+import { ToolSteps } from './ToolSteps';
 import type { Strings } from '../i18n';
 import type { Message } from '../types';
 
@@ -26,6 +27,7 @@ export const MessageBubble = memo(function MessageBubble({
 
   return (
     <article className={isUser ? 'bubble bubble--user' : 'bubble bubble--assistant'}>
+      {message.steps ? <ToolSteps steps={message.steps} strings={strings} /> : null}
       <div className="bubble__body">
         {isUser ? (
           message.content

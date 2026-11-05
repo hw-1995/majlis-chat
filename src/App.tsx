@@ -29,8 +29,19 @@ export default function App() {
   const strings = STRINGS[lang];
   const dir = DIR[lang];
 
-  const { messages, sources, status, notice, droppedTurns, streamStore, send, stop, retry, clear } =
-    useChat(settings);
+  const {
+    messages,
+    sources,
+    status,
+    notice,
+    droppedTurns,
+    liveSteps,
+    streamStore,
+    send,
+    stop,
+    retry,
+    clear,
+  } = useChat(settings);
 
   const updateSettings = useCallback((next: ModelSettings) => {
     setSettings(next);
@@ -98,7 +109,19 @@ export default function App() {
         strings={strings}
         onChange={updateSettings}
         onClearKey={clearKey}
-      />
+      >
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={settings.tools}
+            onChange={(event) => updateSettings({ ...settings, tools: event.target.checked })}
+          />
+          <span>
+            {strings.tools.toggle}
+            <span className="toggle__hint">{strings.tools.hint}</span>
+          </span>
+        </label>
+      </SettingsPanel>
 
       <main className="layout">
         <section className="chat">
@@ -113,6 +136,7 @@ export default function App() {
             examples={strings.examples}
             onPickExample={send}
             strings={strings}
+            liveSteps={liveSteps}
           />
 
           <div className="statusbar">

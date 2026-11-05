@@ -15,24 +15,127 @@ export interface MockSource {
 export interface MockTurn {
   role: string;
   content: string;
+  /** For tool results: which tool produced this content. */
+  name?: string;
 }
 
 /** What the mock decides to do with a request. */
-export type MockReply = { kind: 'text'; text: string };
+export type MockReply =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool_call'; name: string; arguments: string };
+
+const lastUserQuestion = (turns: MockTurn[]): string =>
+  [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
+
+/**
+ * Decide whether the question needs a tool, the way a real model would —
+ * only far more crudely: a few patterns per language. Real tool choice is the
+ * model's job; this exists so that a visitor without an API key can still see
+ * the tool-calling flow end to end.
+ */
+export function pickMockTool(question: string): { name: string; arguments: string } | null {
+  const q = question.toLowerCase();
+  const number = q.match(/\d+/)?.[0];
+
+  const mentionsTeam = /team|团队|فريق/.test(q);
+  const mentionsPro = /\bpro\b|专业版/.test(q);
+  const mentionsCost = /cost|price|how much|多少钱|价格|费用|كم|تكلف|سعر/.test(q);
+  if ((mentionsTeam || mentionsPro) && mentionsCost && number) {
+    const yearly = /year|annual|一年|年付|按年|سنة|سنوي/.test(q);
+    return {
+      name: 'estimate_cost',
+      arguments: JSON.stringify({
+        plan: mentionsTeam ? 'team' : 'pro',
+        seats: mentionsTeam ? Number(number) : 1,
+        months: yearly ? 12 : mentionsTeam ? 1 : Number(number),
+        billing: yearly ? 'yearly' : 'monthly',
+      }),
+    };
+  }
+
+  const expression = question.match(/[\d.]+(?:\s*[-+*/×÷^%]\s*\(?\s*[\d.]+\s*\)?)+/)?.[0];
+  if (expression) {
+    return { name: 'calculate', arguments: JSON.stringify({ expression: expression.trim() }) };
+  }
+
+  if (/what time|current time|today'?s date|几点|现在时间|今天几号|الساعة|الوقت الآن/.test(q)) {
+    return { name: 'get_current_time', arguments: '{}' };
+  }
+  return null;
+}
+
+const TOOL_LEAD: Record<ReplyLang, string> = {
+  en: 'Calculated with the {tool} tool: ',
+  zh: '通过 {tool} 工具计算：',
+  ar: 'تم الحساب باستخدام أداة {tool}: ',
+};
+
+function describeToolResult(name: string, raw: string, lang: ReplyLang, citePrice: string): string {
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return raw;
+  }
+  if (typeof data.error === 'string') {
+    return { en: `The tool reported an error: ${data.error}`, zh: `工具返回错误：${data.error}`, ar: `أبلغت الأداة عن خطأ: ${data.error}` }[lang];
+  }
+  if (name === 'estimate_cost') {
+    const { plan, seats, months, billing, total_usd } = data as Record<string, string | number>;
+    const yearly = billing === 'yearly';
+    return {
+      en: `${seats} × ${plan} for ${months} months${yearly ? ', billed yearly (12 months for the price of 10)' : ''}, comes to $${total_usd}${citePrice}.`,
+      zh: `${plan} 套餐 ${seats} 人、${months} 个月${yearly ? '，按年付费（12 个月只收 10 个月）' : ''}，合计 ${total_usd} 美元${citePrice}。`,
+      ar: `${seats} × ${plan} لمدة ${months} شهراً${yearly ? '، بالدفع السنوي (12 شهراً بسعر 10)' : ''}، المجموع ${total_usd} دولاراً${citePrice}.`,
+    }[lang];
+  }
+  if (name === 'calculate') {
+    return { en: `${data.expression} = ${data.result}.`, zh: `${data.expression} = ${data.result}。`, ar: `${data.expression} = ${data.result}.` }[lang];
+  }
+  if (name === 'get_current_time') {
+    return { en: `It is now ${data.local}.`, zh: `现在是 ${data.local}。`, ar: `الوقت الآن ${data.local}.` }[lang];
+  }
+  return raw;
+}
 
 /**
  * Decide the mock's reply. Shared by the dev-server middleware and the
  * in-browser provider, so both transports behave identically.
+ *
+ * With tools enabled it behaves like a (very literal) agent: first turn asks
+ * for a tool when the question needs one; once the tool result is in the
+ * conversation, it writes the answer from it.
  */
-export function planMockReply(turns: MockTurn[], sources: MockSource[]): MockReply {
-  const question = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
+export function planMockReply(
+  turns: MockTurn[],
+  sources: MockSource[],
+  toolsEnabled = false,
+): MockReply {
+  const question = lastUserQuestion(turns);
+  const lang = detectLang(question);
+  const last = turns[turns.length - 1];
+
+  if (last?.role === 'tool') {
+    // Cite the pricing article when it was retrieved, so the computed price
+    // still points at the source it was computed from.
+    const priceIndex = sources.findIndex((s) => /\$8|8 美元|8 دولار/.test(s.text));
+    const cite = priceIndex >= 0 ? ` [${priceIndex + 1}]` : '';
+    const body = describeToolResult(last.name ?? '', last.content, lang, cite);
+    return { kind: 'text', text: `${TOOL_LEAD[lang].replace('{tool}', last.name ?? 'tool')}${body} ${MOCK_LABEL[lang]}` };
+  }
+
+  if (toolsEnabled) {
+    const tool = pickMockTool(question);
+    if (tool) return { kind: 'tool_call', ...tool };
+  }
   return { kind: 'text', text: composeAnswer(question, sources) };
 }
 
 /** The `/drop` demo affordance: cut the first attempt off halfway. */
 export function shouldDrop(turns: MockTurn[], resumeFrom: string): boolean {
-  const question = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
-  return question.includes('/drop') && resumeFrom.length === 0;
+  // Only the first answer to a question drops, not the follow-up after a tool.
+  const last = turns[turns.length - 1];
+  return last?.role === 'user' && last.content.includes('/drop') && resumeFrom.length === 0;
 }
 
 export function isArabic(text: string): boolean {

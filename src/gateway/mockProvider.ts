@@ -75,7 +75,14 @@ async function streamLocal(
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
   const { turns, sources, resumeFrom, signal } = request;
-  const reply = planMockReply(turns, sources);
+  const reply = planMockReply(turns, sources, (request.tools?.length ?? 0) > 0);
+
+  if (reply.kind === 'tool_call') {
+    await delay(TOKEN_DELAY_MS * 8, signal); // a model takes a moment to decide
+    onEvent({ type: 'tool_call', id: `mock_${Date.now()}`, name: reply.name, arguments: reply.arguments });
+    onEvent({ type: 'done' });
+    return;
+  }
 
   const remaining = reply.text.startsWith(resumeFrom)
     ? reply.text.slice(resumeFrom.length)

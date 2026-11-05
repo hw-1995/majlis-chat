@@ -493,3 +493,58 @@ body {
   opacity: 0.8;
   overflow-wrap: anywhere;
 }
+
+/* ---------- tool steps ---------- */
+
+.steps {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.step {
+  padding: 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--bg, transparent);
+}
+
+.step__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.step__name {
+  font-weight: 600;
+}
+
+.step__fn,
+.step__result {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.step__result {
+  display: block;
+  margin-top: 2px;
+}
+
+.step__state {
+  margin-inline-start: auto;
+  color: var(--accent);
+}
+
+.step--error .step__state {
+  color: #c0392b;
+}
+
+.bubble--steps {
+  padding-bottom: 2px;
+}

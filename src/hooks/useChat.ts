@@ -3,11 +3,13 @@ import { CORPUS } from '../data/corpus';
 import { Bm25Index } from '../lib/bm25';
 import { citedIndices } from '../lib/citations';
 import { createTextStore } from '../lib/textStore';
-import { isAbort, streamTurn } from '../lib/streamClient';
+import { isAbort } from '../lib/streamClient';
+import { runAgent } from '../agent/runAgent';
+import { TOOL_SPECS } from '../agent/tools';
 import { trimToBudget } from '../lib/tokens';
 import { buildProvider, type ModelSettings } from '../gateway/settings';
 import { ProviderError, type ChatTurn } from '../gateway/types';
-import type { ChatStatus, Message, SourceDoc } from '../types';
+import type { ChatStatus, Message, SourceDoc, ToolStep } from '../types';
 
 /** Small enough that trimming is observable in a short demo conversation. */
 const CONTEXT_BUDGET_TOKENS = 1200;
@@ -22,13 +24,19 @@ const makeId = (): string => `m${(nextId += 1)}`;
  * what to do when the passages do not cover the question, which is the
  * difference between "I don't know" and a confident invention.
  */
-export function buildSystemPrompt(sources: SourceDoc[]): string {
+export function buildSystemPrompt(sources: SourceDoc[], toolsEnabled = false): string {
   const listed = sources.map((source, i) => `[${i + 1}] ${source.title}\n${source.text}`).join('\n\n');
   return [
     'You are the help-centre assistant for Qalam Notes, a note-taking app.',
     'Answer using only the sources below, in the same language as the question.',
     'Cite each claim with an inline marker such as [1] that matches the source number.',
     'If the sources do not answer the question, say plainly that the help centre does not cover it. Do not use outside knowledge.',
+    ...(toolsEnabled
+      ? [
+          'For any price for a number of people or months, call estimate_cost instead of doing the arithmetic yourself.',
+          'Use calculate for other arithmetic and get_current_time for the date or time. Tool results do not need a citation.',
+        ]
+      : []),
     '',
     sources.length > 0 ? listed : '(No sources were found for this question.)',
   ].join('\n');
@@ -60,6 +68,7 @@ export function useChat(settings: ModelSettings) {
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [notice, setNotice] = useState<string | null>(null);
   const [droppedTurns, setDroppedTurns] = useState(0);
+  const [liveSteps, setLiveSteps] = useState<ToolStep[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
   const lastQuestionRef = useRef<string>('');
@@ -72,19 +81,26 @@ export function useChat(settings: ModelSettings) {
       abortRef.current = controller;
       lastQuestionRef.current = question;
       const provider = buildProvider(settingsRef.current);
+      const toolsEnabled = settingsRef.current.tools;
 
       setStatus('retrieving');
       setNotice(null);
+      setLiveSteps([]);
       streamStore.set('');
 
       const retrieved = index.search(question, TOP_K).map((entry) => entry.doc);
       setSources(retrieved);
 
-      const system: Message = { id: 'system', role: 'system', content: buildSystemPrompt(retrieved) };
+      const system: Message = {
+        id: 'system',
+        role: 'system',
+        content: buildSystemPrompt(retrieved, toolsEnabled),
+      };
       const budgeted = trimToBudget([system, ...history], CONTEXT_BUDGET_TOKENS);
       setDroppedTurns(budgeted.dropped);
 
       setStatus('streaming');
+      const steps: ToolStep[] = [];
       const finish = (extra: Partial<Message>): void => {
         const content = streamStore.get();
         setMessages((prev) => [
@@ -94,20 +110,26 @@ export function useChat(settings: ModelSettings) {
             role: 'assistant',
             content,
             citations: citedIndices(content, retrieved.length),
+            steps: steps.length > 0 ? [...steps] : undefined,
             ...extra,
           },
         ]);
       };
 
       try {
-        await streamTurn({
+        await runAgent({
           provider,
           turns: toTurns(budgeted.kept),
+          tools: toolsEnabled ? TOOL_SPECS : undefined,
           sources: retrieved,
           signal: controller.signal,
           onToken: streamStore.append,
-          onReset: () => streamStore.set(''),
+          onReset: (keep) => streamStore.set(keep),
           onRetry: () => setNotice('reconnecting'),
+          onStep: (step) => {
+            if (step.status !== 'running') steps.push(step);
+            setLiveSteps((prev) => [...prev.filter((s) => s.id !== step.id), step]);
+          },
         });
         finish({});
         setStatus('idle');
@@ -125,6 +147,7 @@ export function useChat(settings: ModelSettings) {
         }
       } finally {
         streamStore.set('');
+        setLiveSteps([]);
         setNotice(null);
         abortRef.current = null;
       }
@@ -176,6 +199,7 @@ export function useChat(settings: ModelSettings) {
     status,
     notice,
     droppedTurns,
+    liveSteps,
     streamStore,
     send,
     stop,

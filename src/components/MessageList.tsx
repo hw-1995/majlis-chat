@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingBubble } from './StreamingBubble';
+import { ToolSteps } from './ToolSteps';
 import type { TextStore } from '../lib/textStore';
 import type { Strings } from '../i18n';
-import type { Message } from '../types';
+import type { Message, ToolStep } from '../types';
 
 interface MessageListProps {
   messages: Message[];
@@ -16,6 +17,8 @@ interface MessageListProps {
   examples: string[];
   onPickExample: (question: string) => void;
   strings: Strings;
+  /** Tool steps of the answer currently being produced. */
+  liveSteps: ToolStep[];
 }
 
 /** Treat the viewer as "following" the stream while within this many pixels. */
@@ -32,6 +35,7 @@ export function MessageList({
   examples,
   onPickExample,
   strings,
+  liveSteps,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +53,7 @@ export function MessageList({
 
   useEffect(() => {
     scrollToBottomIfFollowing();
-  }, [messages.length, scrollToBottomIfFollowing]);
+  }, [messages.length, liveSteps.length, scrollToBottomIfFollowing]);
 
   return (
     <div className="transcript" ref={scrollRef}>
@@ -83,6 +87,12 @@ export function MessageList({
           strings={strings}
         />
       ))}
+
+      {liveSteps.length > 0 ? (
+        <div className="bubble bubble--assistant bubble--steps">
+          <ToolSteps steps={liveSteps} strings={strings} />
+        </div>
+      ) : null}
 
       <StreamingBubble
         store={streamStore}
