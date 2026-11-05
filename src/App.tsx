@@ -3,7 +3,7 @@ import { Composer } from './components/Composer';
 import { MessageList } from './components/MessageList';
 import { SourcePanel } from './components/SourcePanel';
 import { useChat } from './hooks/useChat';
-import { DIR, STRINGS, type Lang } from './i18n';
+import { DIR, LANG_NAMES, STRINGS, type Lang } from './i18n';
 
 export default function App() {
   const [lang, setLang] = useState<Lang>('en');
@@ -41,16 +41,27 @@ export default function App() {
           <h1 className="header__title">{strings.title}</h1>
           <p className="header__tagline">{strings.tagline}</p>
         </div>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
-        >
-          {strings.langLabel}
-        </button>
+        <div className="langs" role="group" aria-label="Language">
+          {(Object.keys(LANG_NAMES) as Lang[]).map((code) => (
+            <button
+              key={code}
+              type="button"
+              lang={code}
+              className={code === lang ? 'btn btn--ghost btn--active' : 'btn btn--ghost'}
+              aria-pressed={code === lang}
+              onClick={() => setLang(code)}
+            >
+              {LANG_NAMES[code]}
+            </button>
+          ))}
+        </div>
       </header>
 
-      <p className="notice">{strings.mockNotice}</p>
+      <p className="notice">
+        {strings.mockNotice}
+        <br />
+        {strings.corpusNotice}
+      </p>
 
       <main className="layout">
         <section className="chat">
@@ -62,6 +73,8 @@ export default function App() {
             activeIndex={activeIndex}
             emptyState={strings.emptyState}
             emptyHint={strings.emptyHint}
+            examples={strings.examples}
+            onPickExample={send}
           />
 
           <div className="statusbar">

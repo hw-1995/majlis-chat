@@ -12,6 +12,8 @@ interface MessageListProps {
   activeIndex: number | null;
   emptyState: string;
   emptyHint: string;
+  examples: string[];
+  onPickExample: (question: string) => void;
 }
 
 /** Treat the viewer as "following" the stream while within this many pixels. */
@@ -25,6 +27,8 @@ export function MessageList({
   activeIndex,
   emptyState,
   emptyHint,
+  examples,
+  onPickExample,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -50,6 +54,19 @@ export function MessageList({
         <div className="empty">
           <p className="empty__title">{emptyState}</p>
           <p className="empty__hint">{emptyHint}</p>
+          <div className="examples">
+            {examples.map((example) => (
+              <button
+                key={example}
+                type="button"
+                className="example"
+                dir="auto"
+                onClick={() => onPickExample(example)}
+              >
+                {example}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 

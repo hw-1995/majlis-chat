@@ -367,3 +367,40 @@ body {
   margin: 0;
   font-size: 13px;
 }
+
+/* ---------- language switcher + examples ---------- */
+
+.langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn--active {
+  color: var(--surface);
+  background: var(--accent);
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-block-start: 14px;
+}
+
+.example {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.example:hover,
+.example:focus-visible {
+  border-color: var(--accent);
+}
