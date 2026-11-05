@@ -1,0 +1,8 @@
+# Deploy with:  npx wrangler deploy   (from this folder, after `npx wrangler login`)
+name = "majlis-proxy"
+main = "worker.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Who may call the relay. Use your own Pages origin; "*" allows anyone.
+ALLOWED_ORIGINS = "https://hw-1995.github.io,http://localhost:5173"
